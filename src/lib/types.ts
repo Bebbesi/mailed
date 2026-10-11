@@ -3,6 +3,9 @@
  * import server-only code.
  */
 
+import type { LinkedProvider, ServerConfig } from "./linked/providers";
+import type { ThemePref } from "./themes";
+
 export const FOLDERS = ["inbox", "sent", "drafts", "archive", "spam", "trash"] as const;
 export type FolderName = (typeof FOLDERS)[number];
 
@@ -99,6 +102,8 @@ export type MessageDTO = {
   id: string;
   threadId: string;
   direction: "inbound" | "outbound";
+  /** Linked account it came from (inbound) or is sent through (outbound); null for the Mailed address. */
+  accountId: string | null;
   folder: FolderName;
   category: CategoryName;
   from: AddressDTO;
@@ -154,7 +159,7 @@ export type DraftInput = {
 };
 
 export type SettingsDTO = {
-  theme: "light" | "dark" | "system";
+  theme: ThemePref;
   density: "comfortable" | "compact";
   displayName: string | null;
   signatureHtml: string;
@@ -182,6 +187,29 @@ export type MeDTO = {
   createdAt: string;
   storage: { usedBytes: number; quotaBytes: number };
   mail: { outboundConfigured: boolean; domains: string[] };
+  /** Linked accounts the user can send from. */
+  senders: SenderIdentityDTO[];
+};
+
+export type SenderIdentityDTO = { id: string; email: string; displayName: string | null; provider: LinkedProvider };
+
+export type LinkedAccountDTO = {
+  id: string;
+  provider: LinkedProvider;
+  email: string;
+  displayName: string | null;
+  authType: "password" | "oauth";
+  syncEnabled: boolean;
+  sendEnabled: boolean;
+  status: "active" | "error" | "auth_error";
+  lastError: string | null;
+  lastSyncAt: string | null;
+  /** Recent history is still being imported. */
+  importing: boolean;
+  labelId: string | null;
+  imap: ServerConfig;
+  smtp: ServerConfig;
+  createdAt: string;
 };
 
 export type ContactDTO = {

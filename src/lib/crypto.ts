@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 /** URL-safe random token with `bytes` bytes of entropy. */
 export function randomToken(bytes = 32): string {
@@ -40,6 +40,34 @@ export function verifySignedToken(secret: string, token: string): string | null 
   if (!Number.isFinite(expires) || expires < Math.floor(Date.now() / 1000)) return null;
   try {
     return Buffer.from(payloadB64, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function secretKey(secret: string): Buffer {
+  return Buffer.from(hkdfSync("sha256", secret, "mailed", "stored-secrets:v1", 32));
+}
+
+/**
+ * Encrypts a value for storage (AES-256-GCM, key derived from `secret`):
+ * `v1.<iv>.<tag>.<ciphertext>`. Changing APP_SECRET makes old values unreadable.
+ */
+export function encryptSecret(secret: string, plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", secretKey(secret), iv);
+  const data = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return ["v1", iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
+}
+
+/** Returns null for tampered values or ones encrypted with another secret. */
+export function decryptSecret(secret: string, value: string): string | null {
+  const [version, iv, tag, data] = value.split(".");
+  if (version !== "v1" || !iv || !tag || data === undefined) return null;
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", secretKey(secret), Buffer.from(iv, "base64url"));
+    decipher.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8");
   } catch {
     return null;
   }

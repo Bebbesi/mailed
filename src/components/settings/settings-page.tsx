@@ -9,6 +9,7 @@ import { DataSettings } from "./data";
 import { FiltersSettings } from "./filters";
 import { GeneralSettings } from "./general";
 import { LabelsSettings } from "./labels";
+import { LinkedAccountsSettings } from "./linked-accounts";
 import { NotificationSettings } from "./notifications";
 import { SecuritySettings } from "./security";
 import { SignatureSettings } from "./signature";
@@ -16,6 +17,7 @@ import { SignatureSettings } from "./signature";
 const TABS = [
   { id: "general", label: "General" },
   { id: "account", label: "Account" },
+  { id: "accounts", label: "Linked accounts" },
   { id: "signature", label: "Sender & signature" },
   { id: "notifications", label: "Notifications" },
   { id: "filters", label: "Filters & senders" },
@@ -56,6 +58,7 @@ export function SettingsPage() {
         <div className="pt-4 pb-16">
           {tab === "general" ? <GeneralSettings settings={settings} /> : null}
           {tab === "account" ? <AccountSettings me={me} /> : null}
+          {tab === "accounts" ? <LinkedAccountsSettings /> : null}
           {tab === "signature" ? <SignatureSettings settings={settings} me={me} /> : null}
           {tab === "notifications" ? <NotificationSettings settings={settings} /> : null}
           {tab === "filters" ? <FiltersSettings initialLabels={app.labels} /> : null}

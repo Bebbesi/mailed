@@ -2,14 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCheck, Contact, Keyboard, LogOut, Menu, Monitor, Moon, Settings, Sun } from "lucide-react";
+import { Bell, CheckCheck, Contact, Keyboard, LogOut, Menu, Monitor, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -17,12 +19,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { IconButton } from "@/components/ui/icon-button";
+import { ThemeDot } from "@/components/ui/theme-swatch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, errorMessage } from "@/lib/client/api";
 import { relativeTime } from "@/lib/client/format";
 import { qk, useNotifications } from "@/lib/client/hooks";
 import { applyTheme, type ThemePref } from "@/lib/client/theme";
 import { cn } from "@/lib/cn";
+import { THEMES } from "@/lib/themes";
 import type { SettingsDTO } from "@/lib/types";
 import { useApp } from "./app-context";
 import { SearchBox } from "./search-box";
@@ -127,19 +131,29 @@ function AccountMenu() {
           Contacts
         </DropdownMenuItem>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger icon={settings.theme === "dark" ? <Moon /> : settings.theme === "system" ? <Monitor /> : <Sun />}>
+          <DropdownMenuSubTrigger icon={settings.theme === "system" ? <Monitor /> : <ThemeDot id={settings.theme} />}>
             Theme
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
-            <DropdownMenuItem icon={<Sun />} onSelect={() => void setTheme("light")}>
-              Light {settings.theme === "light" ? "✓" : ""}
+            <DropdownMenuItem icon={<Monitor />} shortcut={settings.theme === "system" ? "✓" : undefined} onSelect={() => void setTheme("system")}>
+              System
             </DropdownMenuItem>
-            <DropdownMenuItem icon={<Moon />} onSelect={() => void setTheme("dark")}>
-              Dark {settings.theme === "dark" ? "✓" : ""}
-            </DropdownMenuItem>
-            <DropdownMenuItem icon={<Monitor />} onSelect={() => void setTheme("system")}>
-              System {settings.theme === "system" ? "✓" : ""}
-            </DropdownMenuItem>
+            {(["light", "dark"] as const).map((mode) => (
+              <DropdownMenuGroup key={mode}>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>{mode === "light" ? "Light" : "Dark"}</DropdownMenuLabel>
+                {THEMES.filter((t) => t.mode === mode).map((t) => (
+                  <DropdownMenuItem
+                    key={t.id}
+                    icon={<ThemeDot id={t.id} />}
+                    shortcut={settings.theme === t.id ? "✓" : undefined}
+                    onSelect={() => void setTheme(t.id)}
+                  >
+                    {t.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuItem icon={<Keyboard />} shortcut="?" onSelect={openShortcuts}>

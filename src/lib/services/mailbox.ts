@@ -309,6 +309,7 @@ export function toMessageDTO(
     id: m.id,
     threadId: m.threadId,
     direction: m.direction,
+    accountId: m.linkedAccountId,
     folder: m.folder,
     category: m.category,
     from: { name: m.fromName, address: m.fromAddress },

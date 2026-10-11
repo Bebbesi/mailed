@@ -62,6 +62,8 @@ export function Composer({
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [subject, setSubject] = useState("");
+  /** Linked account to send from; null for the Mailed address. */
+  const [fromAccountId, setFromAccountId] = useState<string | null>(null);
   const [initialHtml, setInitialHtml] = useState<string | null>(request.draftId || (request.mode && request.mode !== "new") ? null : `<p></p>${signatureHtml(settings.signatureHtml)}`);
   const [quotedHtml, setQuotedHtml] = useState<string | null>(null);
   const [showQuoted, setShowQuoted] = useState(false);
@@ -74,16 +76,16 @@ export function Composer({
   const [dragOver, setDragOver] = useState(false);
 
   const htmlRef = useRef<string>(initialHtml ?? "");
-  const lastSavedKey = useRef<string>(JSON.stringify({ to: request.to ?? [], cc: [], bcc: [], subject: "", html: initialHtml ?? "" }));
+  const lastSavedKey = useRef<string>(JSON.stringify({ to: request.to ?? [], cc: [], bcc: [], subject: "", fromAccountId: null, html: initialHtml ?? "" }));
   const dirtyRef = useRef(false);
   const draftIdRef = useRef<string | null>(draftId);
   const savingRef = useRef<Promise<string | null> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const stateRef = useRef({ to, cc, bcc, subject });
+  const stateRef = useRef({ to, cc, bcc, subject, fromAccountId });
   useEffect(() => {
-    stateRef.current = { to, cc, bcc, subject };
-  }, [to, cc, bcc, subject]);
+    stateRef.current = { to, cc, bcc, subject, fromAccountId };
+  }, [to, cc, bcc, subject, fromAccountId]);
 
   const skipSaveRef = useRef(false);
   const applyDraft = useCallback((d: DraftResponse) => {
@@ -96,9 +98,10 @@ export function Composer({
     setShowCc(d.cc.length > 0);
     setShowBcc(d.bcc.length > 0);
     setSubject(d.subject);
+    setFromAccountId(d.accountId);
     setInitialHtml(d.html ?? "<p></p>");
     htmlRef.current = d.html ?? "<p></p>";
-    lastSavedKey.current = JSON.stringify({ to: d.to, cc: d.cc, bcc: d.bcc, subject: d.subject, html: d.html ?? "<p></p>" });
+    lastSavedKey.current = JSON.stringify({ to: d.to, cc: d.cc, bcc: d.bcc, subject: d.subject, fromAccountId: d.accountId, html: d.html ?? "<p></p>" });
     setQuotedHtml(d.quotedHtml);
     setAttachments(d.attachments.filter((a) => !a.isInline));
   }, []);
@@ -189,7 +192,7 @@ export function Composer({
     }
     scheduleSave();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to, cc, bcc, subject]);
+  }, [to, cc, bcc, subject, fromAccountId]);
 
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -483,7 +486,26 @@ export function Composer({
       ) : (
         <>
           <div className="shrink-0">
-            {variant !== "inline" ? (
+            {me.senders.length > 0 ? (
+              <div className="flex h-9 items-center border-b border-line px-4 text-[13px] text-ink-subtle">
+                <label htmlFor={`from-${draftId ?? "new"}`} className="w-12 shrink-0">
+                  From
+                </label>
+                <select
+                  id={`from-${draftId ?? "new"}`}
+                  value={fromAccountId ?? ""}
+                  onChange={(e) => setFromAccountId(e.target.value || null)}
+                  className="min-w-0 flex-1 truncate rounded bg-transparent py-1 text-ink-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">{me.address}</option>
+                  {me.senders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : variant !== "inline" ? (
               <div className="flex h-9 items-center border-b border-line px-4 text-[13px] text-ink-subtle">
                 <span className="w-12 shrink-0">From</span>
                 <span className="truncate text-ink-muted">{me.address}</span>

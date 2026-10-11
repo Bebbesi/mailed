@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { attachments, messageRecipients, messages, userSettings, users } from "../db/schema";
+import { attachments, linkedAccounts, messageRecipients, messages, userSettings, users } from "../db/schema";
 import { env, isLocalDomain } from "../env";
 import { PermanentJobError } from "../jobs";
 import { logger } from "../logger";
@@ -9,7 +9,8 @@ import { domainOf } from "../mail/address";
 import { buildMime } from "../mail/compose";
 import { ingestRawMessage, IngestError } from "../mail/ingest";
 import { htmlToText, makeSnippet } from "../mail/sanitize";
-import { getOutboundTransport, TransportError } from "../mail/transport";
+import { getOutboundTransport, TransportError, type OutboundTransport } from "../mail/transport";
+import { connectionSettings, linkedConnector, LinkedAuthError } from "../linked/connect";
 import { storage, userPrefix } from "../storage";
 import { createNotification } from "./notifications";
 import { recordOutgoingContacts } from "./contacts";
@@ -49,6 +50,16 @@ export async function processSendJob(payload: { messageId?: string }, attempt: n
     .limit(1);
   if (!owner) return;
 
+  // Sent through a linked account (Gmail, Outlook…) when the draft says so.
+  const [account] = m.linkedAccountId
+    ? await db.select().from(linkedAccounts).where(and(eq(linkedAccounts.id, m.linkedAccountId), eq(linkedAccounts.userId, m.userId))).limit(1)
+    : [];
+  if (!account && m.fromAddress && m.fromAddress !== owner.address) {
+    await markFailed(m, `The account ${m.fromAddress} was removed, so this message can't be sent from it.`);
+    return;
+  }
+  const fromAddress = account?.email ?? owner.address;
+
   const recips = await db
     .select()
     .from(messageRecipients)
@@ -68,9 +79,9 @@ export async function processSendJob(payload: { messageId?: string }, attempt: n
 
   const html = `${m.htmlBody ?? ""}${m.draftContext?.quotedHtml ?? ""}`;
   const text = htmlToText(html);
-  const fromName = owner.displayName?.trim() || `${owner.firstName} ${owner.lastName}`.trim();
+  const fromName = account?.displayName?.trim() || owner.displayName?.trim() || `${owner.firstName} ${owner.lastName}`.trim();
   const raw = await buildMime({
-    from: { name: fromName, address: owner.address },
+    from: { name: fromName, address: fromAddress },
     to,
     cc,
     bcc,
@@ -97,7 +108,7 @@ export async function processSendJob(payload: { messageId?: string }, attempt: n
     try {
       const outcome = await ingestRawMessage(raw, {
         source: "local",
-        envelope: { mailFrom: owner.address, rcptTo: [...new Set(local.map((r) => r.address))] },
+        envelope: { mailFrom: fromAddress, rcptTo: [...new Set(local.map((r) => r.address))] },
       });
       for (const r of outcome.rejected) failures.push(`${r.address}: ${r.reason}`);
     } catch (err) {
@@ -110,12 +121,24 @@ export async function processSendJob(payload: { messageId?: string }, attempt: n
   }
 
   if (external.length > 0) {
-    const transport = getOutboundTransport();
-    if (!transport) {
-      for (const r of external) failures.push(`${r.address}: no outbound email provider is configured`);
-    } else {
+    let transport: OutboundTransport | null = null;
+    let close = () => {};
+    if (account) {
       try {
-        const result = await transport.send({ envelope: { from: owner.address, to: [...new Set(external.map((r) => r.address))] }, raw });
+        const t = await linkedConnector().transport(await connectionSettings(account));
+        transport = t;
+        close = () => t.close();
+      } catch (err) {
+        if (!(err instanceof LinkedAuthError) && attempt < maxAttempts) throw err;
+        for (const r of external) failures.push(`${r.address}: ${account.email} could not sign in (${(err as Error).message})`);
+      }
+    } else {
+      transport = getOutboundTransport();
+      if (!transport) for (const r of external) failures.push(`${r.address}: no outbound email provider is configured`);
+    }
+    if (transport) {
+      try {
+        const result = await transport.send({ envelope: { from: fromAddress, to: [...new Set(external.map((r) => r.address))] }, raw });
         for (const r of result.rejected) failures.push(`${r}: rejected by the provider`);
       } catch (err) {
         if (err instanceof TransportError && !err.permanent && attempt < maxAttempts) {
@@ -129,6 +152,8 @@ export async function processSendJob(payload: { messageId?: string }, attempt: n
         const msg = (err as Error).message;
         logger.warn({ messageId: m.id, err: msg }, "outbound delivery failed permanently");
         for (const r of external) failures.push(`${r.address}: ${msg}`);
+      } finally {
+        close();
       }
     }
   }

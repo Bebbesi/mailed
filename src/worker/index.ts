@@ -12,6 +12,7 @@ async function main() {
   const { wakeSnoozed, fireReminders, purgeRetention, housekeeping } = await import("@/lib/services/maintenance");
   const { startSmtpServer } = await import("./smtp-server");
   const { startImapPoller } = await import("./imap");
+  const { runDueLinkedSyncs } = await import("@/lib/linked/sync");
 
   const config = env();
   const workerId = `${os.hostname()}:${process.pid}`;
@@ -87,6 +88,7 @@ async function main() {
     every(15_000, "reminders", fireReminders),
     every(10 * 60_000, "retention", purgeRetention),
     every(10 * 60_000, "housekeeping", housekeeping),
+    every(15_000, "linked-accounts", () => runDueLinkedSyncs()),
   ];
 
   const smtp = config.INBOUND_SMTP_ENABLED ? startSmtpServer() : null;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { userSettings } from "../db/schema";
 import { sanitizeEmailHtml } from "../mail/sanitize";
+import { THEME_IDS } from "../themes";
 import { CATEGORIES, type SettingsDTO } from "../types";
 
 const validLocale = (v: string) => {
@@ -24,7 +25,7 @@ const validTimeZone = (v: string) => {
 
 export const settingsPatchSchema = z
   .object({
-    theme: z.enum(["light", "dark", "system"]),
+    theme: z.enum(THEME_IDS),
     density: z.enum(["comfortable", "compact"]),
     displayName: z.string().trim().max(80).nullable(),
     signatureHtml: z.string().max(20_000),

@@ -15,6 +15,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { LINKED_PROVIDERS, SERVER_SECURITY } from "../linked/providers";
+import { THEME_IDS } from "../themes";
 
 const tsvector = customType<{ data: string }>({
   dataType() {
@@ -49,7 +51,11 @@ export const sendStatusEnum = pgEnum("send_status", [
 ]);
 export const recipientKindEnum = pgEnum("recipient_kind", ["to", "cc", "bcc"]);
 export const authTokenTypeEnum = pgEnum("auth_token_type", ["verify_email", "reset_password"]);
-export const themeEnum = pgEnum("theme", ["light", "dark", "system"]);
+export const themeEnum = pgEnum("theme", THEME_IDS);
+export const linkedProviderEnum = pgEnum("linked_provider", LINKED_PROVIDERS);
+export const linkedAuthEnum = pgEnum("linked_auth", ["password", "oauth_google", "oauth_microsoft"]);
+export const linkedStatusEnum = pgEnum("linked_status", ["active", "error", "auth_error"]);
+export const serverSecurityEnum = pgEnum("server_security", SERVER_SECURITY);
 export const densityEnum = pgEnum("density", ["comfortable", "compact"]);
 export const readingPaneEnum = pgEnum("reading_pane", ["right", "off"]);
 export const remoteImagesEnum = pgEnum("remote_images", ["ask", "always"]);
@@ -281,6 +287,8 @@ export const messages = pgTable(
     sentAt: ts("sent_at"),
     trashedAt: ts("trashed_at"),
     draftContext: jsonb("draft_context").$type<DraftContext>(),
+    /** Inbound: the linked account it was fetched from. Outbound: the account it is sent through. */
+    linkedAccountId: uuid("linked_account_id").references(() => linkedAccounts.id, { onDelete: "set null" }),
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`setweight(to_tsvector('simple'::regconfig, coalesce(subject, '')), 'A') || setweight(to_tsvector('simple'::regconfig, coalesce(from_name, '') || ' ' || coalesce(from_address, '')), 'B') || setweight(to_tsvector('simple'::regconfig, left(coalesce(text_body, ''), 200000)), 'C')`,
     ),
@@ -299,6 +307,7 @@ export const messages = pgTable(
     index("messages_trashed_idx").on(t.folder, t.trashedAt),
     index("messages_search_idx").using("gin", t.searchVector),
     uniqueIndex("messages_user_dedupe_key").on(t.userId, t.dedupeKey),
+    index("messages_linked_account_idx").on(t.linkedAccountId).where(sql`${t.linkedAccountId} is not null`),
   ],
 );
 
@@ -374,6 +383,53 @@ export const messageLabels = pgTable(
   (t) => [
     primaryKey({ columns: [t.messageId, t.labelId] }),
     index("message_labels_label_idx").on(t.labelId),
+  ],
+);
+
+/**
+ * External mailboxes (Gmail, Outlook, any IMAP/SMTP server) whose mail is
+ * fetched into Mailed and which the user can send from. `secret` holds the
+ * password or OAuth refresh token, encrypted with APP_SECRET.
+ */
+export const linkedAccounts = pgTable(
+  "linked_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: linkedProviderEnum("provider").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name"),
+    authType: linkedAuthEnum("auth_type").notNull(),
+    username: text("username").notNull(),
+    secret: text("secret").notNull(),
+    imapHost: text("imap_host").notNull(),
+    imapPort: integer("imap_port").notNull(),
+    imapSecurity: serverSecurityEnum("imap_security").notNull(),
+    smtpHost: text("smtp_host").notNull(),
+    smtpPort: integer("smtp_port").notNull(),
+    smtpSecurity: serverSecurityEnum("smtp_security").notNull(),
+    /** Label applied to every message fetched from this account. */
+    labelId: uuid("label_id").references(() => labels.id, { onDelete: "set null" }),
+    syncEnabled: boolean("sync_enabled").notNull().default(true),
+    sendEnabled: boolean("send_enabled").notNull().default(true),
+    status: linkedStatusEnum("status").notNull().default("active"),
+    uidValidity: text("uid_validity"),
+    lastUid: bigint("last_uid", { mode: "number" }).notNull().default(0),
+    /** False until recent history has been imported (that mail arrives quietly, without notifications). */
+    backfillDone: boolean("backfill_done").notNull().default(false),
+    nextSyncAt: ts("next_sync_at").defaultNow(),
+    syncLockedUntil: ts("sync_locked_until"),
+    lastSyncAt: ts("last_sync_at"),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("linked_accounts_user_email_key").on(t.userId, sql`lower(${t.email})`),
+    index("linked_accounts_due_idx").on(t.nextSyncAt),
   ],
 );
 
@@ -595,3 +651,4 @@ export type Label = typeof labels.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
 export type EmailRule = typeof emailRules.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
+export type LinkedAccount = typeof linkedAccounts.$inferSelect;

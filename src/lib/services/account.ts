@@ -6,6 +6,7 @@ import { securityEvents, sessions, users } from "../db/schema";
 import { env, outboundConfigured } from "../env";
 import { badRequest, notFound, payloadTooLarge } from "../errors";
 import { mailboxUsage } from "../mail/ingest";
+import { senderIdentities } from "./linked-accounts";
 import { storage, userPrefix } from "../storage";
 import type { MeDTO } from "../types";
 
@@ -28,6 +29,7 @@ export async function getMe(userId: string): Promise<MeDTO> {
     createdAt: u.createdAt.toISOString(),
     storage: { usedBytes: await mailboxUsage(u.id), quotaBytes: u.quotaBytes },
     mail: { outboundConfigured: outboundConfigured(), domains: env().MAIL_DOMAINS },
+    senders: await senderIdentities(u.id),
   };
 }
 

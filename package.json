@@ -19,6 +19,7 @@
     "db:studio": "drizzle-kit studio",
     "seed:dev": "tsx --env-file-if-exists=.env scripts/seed-dev.ts",
     "mail:test-inbound": "tsx --env-file-if-exists=.env scripts/send-test-inbound.ts",
+    "mail:rerender": "tsx --env-file-if-exists=.env scripts/rerender-html.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

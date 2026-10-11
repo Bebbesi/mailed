@@ -8,6 +8,7 @@ const TABLES = [
   "reminders",
   "notifications",
   "messages",
+  "linked_accounts",
   "threads",
   "labels",
   "contacts",

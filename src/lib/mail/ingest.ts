@@ -40,10 +40,10 @@ import {
 } from "./address";
 import { headerMap, parseAuthenticationResults, parseDeliveryReport, type AuthResults } from "./headers";
 import { evaluateRules } from "./rules";
-import { htmlToText, makeSnippet, sanitizeEmailHtml } from "./sanitize";
+import { htmlToText, makeSnippet, referencesRemoteContent, sanitizeEmailHtml } from "./sanitize";
 import { normalizeSubject } from "./subject";
 
-export type IngestSource = "smtp" | "imap" | "webhook" | "local" | "import";
+export type IngestSource = "smtp" | "imap" | "webhook" | "local" | "import" | "linked";
 
 export type IngestOptions = {
   source: IngestSource;
@@ -53,8 +53,18 @@ export type IngestOptions = {
   /** Import into these mailboxes regardless of recipients (data import). */
   targetUserIds?: string[];
   importFolder?: Folder;
-  /** Overrides the received time (imports and development fixtures). */
+  /** Overrides the received time (imports, linked accounts and development fixtures). */
   receivedAt?: Date;
+  /** Fetched from a linked account (Gmail, Outlook…) into `targetUserIds`. */
+  linked?: {
+    accountId: string;
+    address: string;
+    labelId: string | null;
+    /** Already read at the provider. */
+    seen: boolean;
+    /** Part of the initial history import: stored quietly, without rules or notifications. */
+    backfill: boolean;
+  };
 };
 
 export type IngestOutcome = {
@@ -142,10 +152,13 @@ type Prepared = {
   attachments: { id: string; filename: string; contentType: string; size: number; content: Buffer; contentId: string | null; inline: boolean; dangerous: boolean; sha256: string }[];
 };
 
+/** How stored messages are parsed; shared with the HTML re-render tool. */
+export const PARSE_OPTIONS = { skipImageLinks: true, skipTextToHtml: true, skipTextLinks: true, keepCidLinks: true } as const;
+
 async function prepare(raw: Buffer, opts: IngestOptions): Promise<Prepared> {
   let parsed: ParsedMail;
   try {
-    parsed = await simpleParser(raw, { skipImageLinks: true, skipTextToHtml: true, skipTextLinks: true, keepCidLinks: true });
+    parsed = await simpleParser(raw, PARSE_OPTIONS);
   } catch (err) {
     throw new IngestError(`Unparseable message: ${(err as Error).message}`, "unparseable");
   }
@@ -155,7 +168,7 @@ async function prepare(raw: Buffer, opts: IngestOptions): Promise<Prepared> {
   const rawHtml = typeof parsed.html === "string" && parsed.html.trim() ? parsed.html : null;
   const text = (parsed.text && parsed.text.trim()) || (rawHtml ? htmlToText(rawHtml) : "");
   const safeHtml = rawHtml ? sanitizeEmailHtml(rawHtml) : null;
-  const hasRemoteContent = safeHtml ? /<img[^>]+src=["']?https?:|url\(\s*['"]?https?:|srcset=["'][^"']*https?:/i.test(safeHtml) : false;
+  const hasRemoteContent = safeHtml ? referencesRemoteContent(safeHtml) : false;
 
   const atts: Prepared["attachments"] = parsed.attachments
     .filter((a) => a.contentType !== "message/delivery-status")
@@ -354,9 +367,12 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
     repliesToUser: false,
   });
   const isImport = opts.source === "import";
+  const linked = opts.linked ?? null;
+  // Imports and the first fetch of a linked account's history arrive without rules or notifications.
+  const quiet = isImport || Boolean(linked?.backfill);
   let external: ExternalVerdict | null = null;
   let dnsblHits: string[] = [];
-  if (!isImport && opts.source !== "local") {
+  if (!quiet && opts.source !== "local") {
     [external, dnsblHits] = await Promise.all([
       rspamdCheck(raw, { ip: opts.envelope?.remoteIp, from: opts.envelope?.mailFrom, rcpt: opts.envelope?.rcptTo, helo: opts.envelope?.helo }),
       dnsblDomainHits(features.links.domains),
@@ -417,7 +433,7 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
           replyTo: p.replyTo,
           to: p.to,
           cc: p.cc,
-          recipientAddress: target.address,
+          recipientAddress: linked?.address ?? target.address,
           subject: p.subject,
           text: p.text,
           html: p.rawHtml,
@@ -443,16 +459,17 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
         });
 
         // Imported mail written by the mailbox owner belongs in Sent.
-        const ownImported = isImport && p.from.address === target.address;
+        const ownImported = (isImport && p.from.address === target.address) || (linked !== null && p.from.address === linked.address);
         const state = {
-          folder: (ownImported ? "sent" : isImport ? (opts.importFolder ?? "inbox") : verdict.isSpam ? "spam" : "inbox") as Folder,
-          isRead: isImport,
+          // The provider already filtered spam out of a linked inbox; Mailed's score still drives warnings.
+          folder: (ownImported ? "sent" : isImport ? (opts.importFolder ?? "inbox") : verdict.isSpam && !linked ? "spam" : "inbox") as Folder,
+          isRead: isImport || ownImported || Boolean(linked?.seen),
           isStarred: false,
           isImportant: verdict.isImportant,
           category: verdict.category,
-          labelIds: new Set<string>(),
+          labelIds: new Set<string>(linked?.labelId ? [linked.labelId] : []),
         };
-        if (!isImport) {
+        if (!quiet) {
           const { actions } = evaluateRules(rules, {
             from: `${p.from.name} ${p.from.address}`,
             to: [...p.to, ...p.cc].map((a) => `${a.name} ${a.address}`).join(", "),
@@ -503,6 +520,7 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
             listId: p.listId,
             listUnsubscribe: p.listUnsubscribe,
             trashedAt: state.folder === "trash" ? new Date() : null,
+            linkedAccountId: linked?.accountId ?? null,
           })
           .returning({ id: messages.id });
 
@@ -547,7 +565,7 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
       storedKeys.length = 0;
       outcome.delivered.push({ userId, messageId: result.messageId, threadId: result.threadId, folder: result.folder, duplicate: false });
 
-      if (!isImport) {
+      if (!quiet) {
         await handleBounce(userId, p);
         const muted = settings?.mutedCategories ?? [];
         const notify = result.folder === "inbox" && !result.isRead && (settings?.notifyInApp ?? true) && !muted.includes(result.category);
@@ -582,7 +600,7 @@ export async function ingestRawMessage(raw: Buffer, opts: IngestOptions): Promis
     }
   }
 
-  if (!isImport && senderReg && outcome.delivered.some((d) => !d.duplicate)) {
+  if (!quiet && senderReg && outcome.delivered.some((d) => !d.duplicate)) {
     await db
       .insert(domainReputation)
       .values({ domain: senderReg, messagesSeen: 1 })

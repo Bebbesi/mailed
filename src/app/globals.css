@@ -2,7 +2,14 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
+/*
+ * Themes: :root is Light and .dark is Dark. Each named palette below sets
+ * data-theme on <html> (dark palettes also get .dark, which supplies the
+ * status colours) and overrides the neutrals and accent. The selectors are
+ * not tied to :root so the pickers can preview a palette on any element.
+ */
+:root,
+[data-theme="light"] {
   --canvas: #ffffff;
   --surface: #ffffff;
   --sidebar: #fafafa;
@@ -60,6 +67,210 @@
   --overlay: rgb(0 0 0 / 0.6);
   --shadow-color: 0 0% 0%;
   color-scheme: dark;
+}
+
+/* Light palettes */
+[data-theme="lilac"] {
+  --canvas: #fdfbff;
+  --surface: #ffffff;
+  --sidebar: #f6f1fc;
+  --hover: #efe7f9;
+  --active: #e7dcf5;
+  --selected: #ede3fb;
+  --ink: #1f1630;
+  --ink-muted: #43385a;
+  --ink-subtle: #665a7b;
+  --ink-faint: #9488a6;
+  --line: #ebe3f5;
+  --line-strong: #d9cdea;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-ink: #6d28d9;
+  --accent-soft: #f3ebff;
+  --accent-fg: #ffffff;
+  --ring: #8b5cf6;
+  --shadow-color: 270 30% 20%;
+  color-scheme: light;
+}
+
+[data-theme="pink"] {
+  --canvas: #fffbfc;
+  --surface: #ffffff;
+  --sidebar: #fdf2f6;
+  --hover: #fae8ef;
+  --active: #f6dbe6;
+  --selected: #fce4ee;
+  --ink: #2a1520;
+  --ink-muted: #4f3341;
+  --ink-subtle: #77586a;
+  --ink-faint: #a68796;
+  --line: #f5e1ea;
+  --line-strong: #ebcbd9;
+  --accent: #c81e6a;
+  --accent-hover: #a3175a;
+  --accent-ink: #b0195c;
+  --accent-soft: #fdeef4;
+  --accent-fg: #ffffff;
+  --ring: #ec4899;
+  --shadow-color: 335 30% 20%;
+  color-scheme: light;
+}
+
+[data-theme="blue"] {
+  --canvas: #fbfdff;
+  --surface: #ffffff;
+  --sidebar: #eff6fd;
+  --hover: #e5effa;
+  --active: #d8e7f7;
+  --selected: #dcebfc;
+  --ink: #0f1d2e;
+  --ink-muted: #2e4157;
+  --ink-subtle: #53657a;
+  --ink-faint: #8696a8;
+  --line: #dde8f4;
+  --line-strong: #c7d7ea;
+  --accent: #0369a1;
+  --accent-hover: #075985;
+  --accent-ink: #0369a1;
+  --accent-soft: #e8f3fc;
+  --accent-fg: #ffffff;
+  --ring: #0284c7;
+  --shadow-color: 210 40% 15%;
+  color-scheme: light;
+}
+
+[data-theme="sand"] {
+  --canvas: #fdfbf7;
+  --surface: #fffdf9;
+  --sidebar: #f6f1e7;
+  --hover: #efe8da;
+  --active: #e7decb;
+  --selected: #f3e8d2;
+  --ink: #2b2418;
+  --ink-muted: #4d4434;
+  --ink-subtle: #675d4d;
+  --ink-faint: #9c9282;
+  --line: #ebe3d4;
+  --line-strong: #dbd0bc;
+  --accent: #a84b07;
+  --accent-hover: #8a3d06;
+  --accent-ink: #954306;
+  --accent-soft: #fbf0dd;
+  --accent-fg: #ffffff;
+  --ring: #d97706;
+  --shadow-color: 35 30% 15%;
+  color-scheme: light;
+}
+
+/* Dark palettes */
+[data-theme="black"] {
+  --canvas: #0a0a0a;
+  --surface: #111111;
+  --sidebar: #0a0a0a;
+  --hover: #1a1a1a;
+  --active: #232323;
+  --selected: #1e1e1e;
+  --ink: #f5f5f5;
+  --ink-muted: #c9c9c9;
+  --ink-subtle: #9a9a9a;
+  --ink-faint: #5f5f5f;
+  --line: #1f1f1f;
+  --line-strong: #2f2f2f;
+  --accent: #f2f2f2;
+  --accent-hover: #ffffff;
+  --accent-ink: #ffffff;
+  --accent-soft: #1f1f1f;
+  --accent-fg: #0a0a0a;
+  --ring: #d4d4d4;
+}
+
+/* True black for OLED screens: surfaces are separated by lines, not shades. */
+[data-theme="oled"] {
+  --canvas: #000000;
+  --surface: #000000;
+  --sidebar: #000000;
+  --hover: #121212;
+  --active: #1b1b1b;
+  --selected: #0b1730;
+  --ink: #f2f2f2;
+  --ink-muted: #c4c4c4;
+  --ink-subtle: #929292;
+  --ink-faint: #5c5c5c;
+  --line: #1c1c1c;
+  --line-strong: #2e2e2e;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-ink: #7cacff;
+  --accent-soft: #0b1730;
+  --accent-fg: #ffffff;
+  --ring: #60a5fa;
+  --overlay: rgb(0 0 0 / 0.75);
+}
+
+[data-theme="midnight"] {
+  --canvas: #0b1120;
+  --surface: #0f172a;
+  --sidebar: #0a0f1c;
+  --hover: #172138;
+  --active: #1e2a46;
+  --selected: #192c52;
+  --ink: #e6edf7;
+  --ink-muted: #b8c4d8;
+  --ink-subtle: #8b9ab3;
+  --ink-faint: #56637a;
+  --line: #1c2740;
+  --line-strong: #2a3756;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-ink: #8ab4ff;
+  --accent-soft: #14254a;
+  --accent-fg: #ffffff;
+  --ring: #60a5fa;
+  --shadow-color: 222 47% 4%;
+}
+
+[data-theme="purple"] {
+  --canvas: #120d1d;
+  --surface: #181127;
+  --sidebar: #0f0a19;
+  --hover: #221833;
+  --active: #2b1f40;
+  --selected: #2e1f4f;
+  --ink: #f1ecfa;
+  --ink-muted: #cdc1e2;
+  --ink-subtle: #a193bb;
+  --ink-faint: #66597f;
+  --line: #261c38;
+  --line-strong: #382a4c;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-ink: #c4a8ff;
+  --accent-soft: #2a1a4a;
+  --accent-fg: #ffffff;
+  --ring: #a78bfa;
+  --shadow-color: 265 50% 4%;
+}
+
+[data-theme="forest"] {
+  --canvas: #0b1310;
+  --surface: #101a16;
+  --sidebar: #09100d;
+  --hover: #16241e;
+  --active: #1d2e27;
+  --selected: #173a2c;
+  --ink: #e8f2ed;
+  --ink-muted: #bed2c8;
+  --ink-subtle: #8fa89d;
+  --ink-faint: #56695f;
+  --line: #1a2a23;
+  --line-strong: #283b32;
+  --accent: #15803d;
+  --accent-hover: #166534;
+  --accent-ink: #6fd69a;
+  --accent-soft: #12301f;
+  --accent-fg: #ffffff;
+  --ring: #4ade80;
+  --shadow-color: 150 40% 3%;
 }
 
 @theme inline {

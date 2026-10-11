@@ -12,6 +12,7 @@ import { newMessageId } from "../mail/compose";
 import { escapeHtml, htmlToText, makeSnippet, sanitizeEmailHtml, textToHtml } from "../mail/sanitize";
 import { forwardSubject, normalizeSubject, replySubject } from "../mail/subject";
 import { storage, userPrefix } from "../storage";
+import { getSendingAccount, senderIdentities } from "./linked-accounts";
 import { getOwnedMessage, hydrateMessages } from "./mailbox";
 
 const addressSchema = z.object({
@@ -25,6 +26,8 @@ export const draftPatchSchema = z.object({
   bcc: z.array(addressSchema).max(100).optional(),
   subject: z.string().max(998).optional(),
   html: z.string().max(2_000_000).optional(),
+  /** Linked account to send from; null for the Mailed address. */
+  fromAccountId: z.string().uuid().nullable().optional(),
 });
 
 export const draftCreateSchema = draftPatchSchema.extend({
@@ -45,6 +48,13 @@ async function loadUser(userId: string) {
 
 function senderName(row: Awaited<ReturnType<typeof loadUser>>) {
   return row.settings?.displayName?.trim() || `${row.user.firstName} ${row.user.lastName}`.trim();
+}
+
+/** From fields for a draft: the Mailed address, or a linked account the user may send from. */
+async function fromFields(userId: string, me: Awaited<ReturnType<typeof loadUser>>, accountId: string | null) {
+  if (!accountId) return { linkedAccountId: null, fromAddress: me.user.address, fromName: senderName(me) };
+  const a = await getSendingAccount(userId, accountId);
+  return { linkedAccountId: a.id, fromAddress: a.email, fromName: a.displayName?.trim() || senderName(me) };
 }
 
 function signatureBlock(signatureHtml: string | undefined | null) {
@@ -96,8 +106,8 @@ export async function createDraft(userId: string, input: z.infer<typeof draftCre
     ctx.sourceMessageId = source.id;
     threadId = source.threadId;
     const [srcDto] = await hydrateMessages(userId, [source]);
-    const self = me.user.address;
-    const notSelf = (a: EmailAddress) => normalizeAddress(a.address) !== self;
+    const own = new Set([me.user.address, ...(await senderIdentities(userId)).map((s) => s.email)]);
+    const notSelf = (a: EmailAddress) => !own.has(normalizeAddress(a.address));
     const dedupe = (list: EmailAddress[]) => {
       const seen = new Set<string>();
       return list.filter((a) => (seen.has(a.address) ? false : (seen.add(a.address), true)));
@@ -134,6 +144,13 @@ export async function createDraft(userId: string, input: z.infer<typeof draftCre
     }
   }
 
+  // Replies go out from the account the original arrived at, when it can still send.
+  let accountId = input.fromAccountId ?? null;
+  if (input.fromAccountId === undefined && source?.linkedAccountId) {
+    accountId = (await getSendingAccount(userId, source.linkedAccountId).catch(() => null))?.id ?? null;
+  }
+  const from = await fromFields(userId, me, accountId);
+
   const bodyHtml = input.html !== undefined ? sanitizeEmailHtml(input.html) : `<p></p>${signatureBlock(me.settings?.signatureHtml)}`;
   const text = htmlToText(bodyHtml);
   const now = new Date();
@@ -151,8 +168,7 @@ export async function createDraft(userId: string, input: z.infer<typeof draftCre
         direction: "outbound",
         folder: "drafts",
         sendStatus: "draft",
-        fromName: senderName(me),
-        fromAddress: me.user.address,
+        ...from,
         subject,
         snippet: makeSnippet(text),
         textBody: text,
@@ -204,6 +220,7 @@ export async function updateDraft(userId: string, draftId: string, patch: z.infe
   const now = new Date();
   const set: Partial<typeof messages.$inferInsert> = { updatedAt: now, date: now, sortDate: now };
   if (patch.subject !== undefined) set.subject = patch.subject.replace(/[\r\n]+/g, " ");
+  if (patch.fromAccountId !== undefined) Object.assign(set, await fromFields(userId, await loadUser(userId), patch.fromAccountId));
   if (patch.html !== undefined) {
     const html = sanitizeEmailHtml(patch.html);
     const text = htmlToText(html);
@@ -244,7 +261,9 @@ export async function sendDraft(userId: string, draftId: string, opts: z.infer<t
   const invalid = all.filter((a) => !isValidEmail(a.address));
   if (invalid.length) throw badRequest(`Check these addresses: ${invalid.map((a) => a.address).join(", ")}`, { field: "to", invalid: invalid.map((a) => a.address) });
 
-  const external = all.filter((a) => !isLocalDomain(domainOf(a.address)));
+  const account = draft.linkedAccountId ? await getSendingAccount(userId, draft.linkedAccountId) : null;
+  // A linked account sends through its own provider, so the server's outbound setup doesn't matter.
+  const external = account ? [] : all.filter((a) => !isLocalDomain(domainOf(a.address)));
   if (external.length > 0 && !me.user.emailVerifiedAt) {
     throw forbidden("Confirm your recovery email before sending to addresses outside Mailed.");
   }
@@ -291,7 +310,7 @@ export async function sendDraft(userId: string, draftId: string, opts: z.infer<t
     }
   }
 
-  const messageId = newMessageId(domainOf(me.user.address));
+  const messageId = newMessageId(domainOf(account?.email ?? me.user.address));
   const undoSeconds = Math.min(Math.max(me.settings?.undoSendSeconds ?? 5, 0), 30);
   const runAt = scheduledAt ?? new Date(Date.now() + undoSeconds * 1000);
   const when = scheduledAt ?? new Date();
@@ -308,7 +327,7 @@ export async function sendDraft(userId: string, draftId: string, opts: z.infer<t
         inReplyTo,
         referencesHeader: references,
         dedupeKey: `out:${messageId}`,
-        fromName: senderName(me),
+        fromName: account?.displayName?.trim() || senderName(me),
         date: when,
         sortDate: when,
         updatedAt: new Date(),

@@ -24,6 +24,7 @@ export const qk = {
   thread: (id: string, viewKey: string) => ["thread", id, viewKey] as const,
   notifications: ["notifications"] as const,
   contacts: (q: string) => ["contacts", q] as const,
+  linkedAccounts: ["linked-accounts"] as const,
 };
 
 export function viewKey(view: ViewRef, filter?: string) {

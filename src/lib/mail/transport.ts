@@ -26,14 +26,19 @@ export interface OutboundTransport {
 }
 
 type NodemailerTransporter = ReturnType<typeof nodemailer.createTransport>;
+export type SmtpOptions = Parameters<typeof nodemailer.createTransport>[0];
 
 class SmtpTransport implements OutboundTransport {
   readonly name = "smtp";
   private transporter: NodemailerTransporter;
 
-  constructor() {
+  constructor(options: SmtpOptions) {
+    this.transporter = nodemailer.createTransport(options);
+  }
+
+  static fromEnv(): SmtpTransport {
     const e = env();
-    this.transporter = nodemailer.createTransport({
+    return new SmtpTransport({
       host: e.SMTP_HOST,
       port: e.SMTP_PORT,
       secure: e.SMTP_SECURE,
@@ -53,6 +58,10 @@ class SmtpTransport implements OutboundTransport {
             }
           : undefined,
     });
+  }
+
+  close() {
+    this.transporter.close();
   }
 
   async send(input: { envelope: { from: string; to: string[] }; raw: Buffer }): Promise<SendResult> {
@@ -83,9 +92,14 @@ export function getOutboundTransport(): OutboundTransport | null {
     transport = null;
     return null;
   }
-  transport = new SmtpTransport();
+  transport = SmtpTransport.fromEnv();
   logger.info({ driver: transport.name, host: env().SMTP_HOST }, "outbound transport ready");
   return transport;
+}
+
+/** An SMTP transport with explicit settings (linked accounts). Call `close()` when done. */
+export function createSmtpTransport(options: SmtpOptions): OutboundTransport & { close(): void } {
+  return new SmtpTransport(options);
 }
 
 /** Test hook: replace the transport (e.g. with an in-memory fake). */

@@ -1,12 +1,12 @@
 "use client";
 
-import { Monitor, Moon, Sun } from "lucide-react";
 import { useMemo } from "react";
 import { Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { applyTheme } from "@/lib/client/theme";
 import type { SettingsDTO } from "@/lib/types";
 import { Row, Section, Segmented } from "./section";
+import { ThemePicker } from "./theme-picker";
 import { useSettingsPatch } from "./use-settings-patch";
 
 const LOCALES = [
@@ -42,21 +42,16 @@ export function GeneralSettings({ settings }: { settings: SettingsDTO }) {
   return (
     <>
       <Section title="Appearance" description="How Mailed looks on this and your other devices.">
-        <Row label="Theme">
-          <Segmented
-            label="Theme"
+        <div>
+          <p className="mb-3 text-[13px] font-medium text-ink">Theme</p>
+          <ThemePicker
             value={settings.theme}
             onChange={(theme) => {
               applyTheme(theme);
               void patch({ theme }, { quiet: true });
             }}
-            options={[
-              { value: "light", label: "Light", icon: <Sun /> },
-              { value: "dark", label: "Dark", icon: <Moon /> },
-              { value: "system", label: "System", icon: <Monitor /> },
-            ]}
           />
-        </Row>
+        </div>
         <Row label="List density" description="Compact shows more conversations at once.">
           <Segmented
             label="List density"
@@ -134,7 +129,7 @@ export function GeneralSettings({ settings }: { settings: SettingsDTO }) {
             ))}
           </Select>
         </Row>
-        {sample ? <p className="text-xs text-ink-subtle">Preview: {sample}</p> : null}
+        {sample ? <p className="text-xs text-ink-subtle" suppressHydrationWarning>Preview: {sample}</p> : null}
       </Section>
     </>
   );

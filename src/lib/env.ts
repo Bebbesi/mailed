@@ -79,6 +79,18 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: optionalString,
   S3_FORCE_PATH_STYLE: bool(false),
 
+  /** Linked accounts (Gmail, Outlook…): how often to fetch and how much history to import. */
+  LINKED_POLL_INTERVAL_SECONDS: int(60),
+  LINKED_BACKFILL_DAYS: int(30),
+  LINKED_BACKFILL_MAX: int(500),
+  /** Allows custom IMAP/SMTP hosts on private networks (off: prevents probing internal services). */
+  LINKED_ALLOW_PRIVATE_HOSTS: bool(false),
+  GOOGLE_CLIENT_ID: optionalString,
+  GOOGLE_CLIENT_SECRET: optionalString,
+  MICROSOFT_CLIENT_ID: optionalString,
+  MICROSOFT_CLIENT_SECRET: optionalString,
+  MICROSOFT_TENANT: z.string().default("common"),
+
   MAX_MESSAGE_SIZE_MB: int(25),
   DEFAULT_QUOTA_MB: int(5120),
   SEND_LIMIT_PER_HOUR: int(100),
